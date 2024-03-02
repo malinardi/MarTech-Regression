@@ -1,0 +1,184 @@
+---
+title: "SIMPLE LINEAR REGRESSION MODEL"
+author: "MarTech IPAM 2024"
+date: "2024-03-01"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
+
+```{r setup, }
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(error = FALSE)
+
+
+```
+
+# Simple Linear Regression Model - Predict Sales
+
+## 1. Setup do ambiente
+
+### 1.1 Instalação e leitura das bibliotecas (pacotes) necessários
+```{r}
+
+options(repos = "https://cran.rstudio.com")
+
+rm(list = ls())
+if(!require(pacman)) install.packages("pacman")
+library(pacman)
+
+pacman::p_load(tidyverse,
+                 Hmisc,
+                 stargazer,
+                 visdat,
+                 rmarkdown, 
+                 knitr, 
+                 GGally, 
+                 summarytools,
+                 extremevalues,
+                 DataExplorer,
+                 gplots,
+                 ggplot2,
+                 SmartEDA,
+                 kableExtra,
+                 e1071,
+                 caret,
+                 rstatix,
+                 lmtest,
+                 ggpmisc,
+                 car,
+                 psych
+                 )
+p_loaded()
+
+```
+
+### 1.2 Carga e vista geral do ficheiro
+
+```{r}
+
+
+dados <- read.csv2("publicidade.csv")
+
+#varificar se há alguma linha repetida
+anyDuplicated(dados)
+
+#Exploração da estrutura do data frame - visão 1
+ExpData(dados,type=1) 
+#Exploração da estrutura do data frame - visão 2
+ExpData(dados,type=2) 
+#Exploração da estrutura do data frame - visão 3
+str(dados) 
+#Exploração da estrutura do data frame - visão 4
+plot_intro(dados)
+
+# Avaliação da relação linear entre as variáveis:
+plot(dados$Publicidade,dados$Vendas)
+cor.test(dados$Publicidade,dados$Vendas,
+         alternative = "two.sided",
+         method = "pearson",
+         exact = NULL, conf.level = 0.95, continuity = FALSE)
+
+
+
+
+```
+
+## 2 Machine Learning
+
+### 2.1 Treinamento do modelo
+```{r}
+# Defina a semente para reproduzibilidade
+set.seed(58)
+
+# define a proporção de dados que será usada para treinamento (por exemplo, 0.7 para 70%)
+index <- createDataPartition(dados$Vendas, p = 0.7, list = FALSE)
+
+# Crie conjuntos de treinamento e teste com base nos índices
+conjunto_treinamento <- dados[index, ]
+conjunto_teste <- dados[-index, ]
+
+# validar a igualdade das amostras
+boxplot(conjunto_treinamento$Vendas,conjunto_teste$Vendas)
+
+
+# Criar um modelo de Regressão Linear
+modelo_lin <- lm(Vendas ~ Publicidade, dados)
+
+
+```
+
+### 2.2 Validação dos Pressupostos
+```{r}
+# Análise gráfica:
+par(mfrow=c(2,2))
+plot(modelo_lin)
+### Interpretação: https://data.library.virginia.edu/diagnostic-plots/
+
+# (ES) gráfico Residuals vs Fitted (ajustamento dos resíduos), comprava a linearidade dos resíduos, 
+# para isso deve ter a linha vermelha na horizontal.
+
+# (DS) Normal Q-Q (gráfico QQ Plot) demonstra a normalidade dos resíduos, deve ser apoiado pelo teste de Shapiro Wilk
+
+# (EI) Scale Location (valida a homocedasticidade dos resíduos)
+# o gráfico deve apresentar uma distribuição dos pontos de forma aleatória
+
+# (DI) Residuals vs Leverage - outliers e pontos influentes dos resíduos
+# algo fora do padrão irá estar acima de linha pontilhada
+
+## Normalidade dos resíduos:
+## H0 = Há normalidade nos dados
+shapiro.test(modelo_lin$residuals)
+
+## Outliers nos resíduos:
+## tendo os resíduos estandarizados, devemos observar se algum deles passa do valor 3
+summary(rstandard(modelo_lin))
+
+## Homocedasticidade (Breusch-Pagan):H0 há homocedasticidade
+bptest(modelo_lin)
+
+## Independência dos resíduos (Durbin-Watson): H0 autocorrelação positiva
+## contudo normalmente utilizado para estudos longitudinais com a seguinte leitura
+## A estatística de teste Durbin-Watson toma valores entre 0 e 4. Ao nível de significância  de 5%: ## 𝑑≈0, rejeita-se H0 e existe autocorrelação positiva
+## 𝑑≈4, rejeita-se H0 e existe autocorrelação negativa
+##valores próximos de 2, tipicamente entre 1.5 e 2.5, não se rejeita H0, assumindo-se a independência
+durbinWatsonTest(modelo_lin)
+
+## Resultados do Modelo
+summary(modelo_lin)
+
+```
+
+
+### 2.3 uso do modelo para predição do revolving
+```{r}
+# Fazer previsões
+conjunto_teste$Vendas_pr <- 125.17951+(conjunto_teste$Publicidade*0.10495)
+
+
+
+```
+
+### 2.4 Avaliar a predição
+```{r}
+### Avaliação visual
+ggplot(data = dados, mapping = aes(x = Publicidade, y = Vendas)) +
+  geom_point() +
+  geom_smooth(method = "lm", col = "blue") +
+  stat_poly_eq(aes(label = paste(after_stat(eq.label), after_stat(adj.rr.label),
+                                 sep = "*plain(\",\")~~")),
+               label.x = 0.5, label.y = 0.05,
+               parse = TRUE, coef.digits = 5) +
+  theme_classic()
+
+### Avaliação pela diferença da previsão - critério exclusivamente gerencial!!!
+conjunto_teste$dif <- conjunto_teste$Vendas-conjunto_teste$Vendas_pr
+summary(conjunto_teste$dif)
+t.test(conjunto_teste$dif)
+
+
+
+```
+
